@@ -1,8 +1,10 @@
 package plugin.acc2.calculator.service;
 
 import java.math.*;
+
 import lombok.*;
 import org.springframework.stereotype.*;
+import plugin.acc2.calculator.client.CreditClient;
 import plugin.acc2.calculator.exception.BadRequestException;
 import plugin.acc2.calculator.service.model.*;
 
@@ -10,14 +12,22 @@ import plugin.acc2.calculator.service.model.*;
 @RequiredArgsConstructor
 public class UserCalculatorService {
 
+    private final CreditClient creditClient;
+
     public CalculateBaseResult calculateLoan(UserCalculation userCalculation) {
 
-        validateuserCalculation(userCalculation);
+        validateUserCalculation(userCalculation);
 
         BigDecimal discountCost = null;
         boolean insurance = userCalculation.isInsuranceApplied();
         BigDecimal amount = userCalculation.getAmount();
-        Float interestRate = userCalculation.getBaseInterestRate() - userCalculation.getInsuranceDiscount();
+        BigDecimal interestRate = userCalculation.getBaseInterestRate();
+        BigDecimal insuranceDiscount = userCalculation.getInsuranceDiscount();
+
+        if (insuranceDiscount.compareTo(BigDecimal.ZERO) != 0) {
+            interestRate = interestRate.subtract(insuranceDiscount);
+        }
+
         int termMonths = userCalculation.getTermMonths();
 
         BigDecimal annuityPayment = calculateAnnuityPayment(amount, interestRate, termMonths);
@@ -28,9 +38,9 @@ public class UserCalculatorService {
                 RoundingMode.HALF_UP);
 
         if (insurance) {
-            Float discountRate = userCalculation.getInsuranceDiscount();
+            BigDecimal discountRate = userCalculation.getInsuranceDiscount();
             discountCost = totalPayment
-                    .multiply(BigDecimal.valueOf(discountRate)
+                    .multiply(discountRate
                             .divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP)
                     ).setScale(2, RoundingMode.HALF_UP);
 
@@ -43,12 +53,28 @@ public class UserCalculatorService {
                 discountCost);
     }
 
+    /**
+     * Расчёт аннуитетного ежемесячного платежа по формуле:
+     * <p>
+     * A = P * (r * (1 + r)^n) / ((1 + r)^n - 1)
+     * <p>
+     * где:
+     * A — ежемесячный платеж (аннуитет),
+     * P — сумма кредита (amount),
+     * r — месячная процентная ставка (годовая ставка / 12 / 100),
+     * n — срок кредита в месяцах (termMonths).
+     *
+     * @param amount             сумма кредита
+     * @param interestRateAnnual годовая процентная ставка, например 9.0f означает 9%
+     * @param termMonths         срок кредита в месяцах
+     * @return аннуитетный ежемесячный платеж, округлённый до 2 знаков после запятой
+     */
     private BigDecimal calculateAnnuityPayment(
             BigDecimal amount,
-            Float interestRateAnnual,
+            BigDecimal interestRateAnnual,
             Integer termMonths
     ) {
-        BigDecimal monthlyRate = BigDecimal.valueOf(interestRateAnnual)
+        BigDecimal monthlyRate = interestRateAnnual
                 .divide(BigDecimal.valueOf(12 * 100), 10, RoundingMode.HALF_UP);
 
         BigDecimal onePlusRate = monthlyRate.add(BigDecimal.ONE);
@@ -61,7 +87,7 @@ public class UserCalculatorService {
         return result.setScale(2, RoundingMode.HALF_UP);
     }
 
-    private void validateuserCalculation(UserCalculation userCalculation) {
+    private void validateUserCalculation(UserCalculation userCalculation) {
         var amount = userCalculation.getAmount();
         var termMonths = userCalculation.getTermMonths();
         var interestRate = userCalculation.getBaseInterestRate();
@@ -69,41 +95,35 @@ public class UserCalculatorService {
         var insuranceApplied = userCalculation.isInsuranceApplied();
         var insuranceDiscount = userCalculation.getInsuranceDiscount();
 
-        if (insuranceApplied && insuranceDiscount < 0) {
+        if (insuranceApplied && insuranceDiscount.compareTo(BigDecimal.ZERO) < 0) {
             throw new BadRequestException("Неверные параметры запроса");
         }
 
-        if (amount.compareTo(BigDecimal.ZERO) <= 0 || termMonths <= 0 || interestRate <= 0 || creditType == null) {
+        if (amount.compareTo(BigDecimal.ZERO) <= 0 || termMonths <= 0
+                || interestRate.compareTo(BigDecimal.ZERO) <= 0 || creditType == null) {
             throw new BadRequestException("Неверные параметры запроса");
         }
 
-        switch (creditType) {
-            case CONSUMER_CREDIT -> {
-                if (amount.compareTo(BigDecimal.valueOf(50_000)) < 0 ||
-                        amount.compareTo(BigDecimal.valueOf(5_000_000)) > 0 ||
-                        termMonths < 12 || termMonths > 60) {
-                    throw new
-                            BadRequestException("Параметры не соответствуют требованиям для потребительского кредита");
-                }
-            }
-            case MORTGAGE -> {
-                if (amount.compareTo(BigDecimal.valueOf(1_000_000)) < 0 ||
-                        amount.compareTo(BigDecimal.valueOf(30_000_000)) > 0 ||
-                        termMonths < 60 || termMonths > 240) {
-                    throw new BadRequestException("Параметры не соответствуют требованиям для ипотеки");
-                }
-            }
-            case CAR_CREDIT -> {
-                if (amount.compareTo(BigDecimal.valueOf(500_000)) < 0 ||
-                        amount.compareTo(BigDecimal.valueOf(15_000_000)) > 0 ||
-                        termMonths < 36 || termMonths > 120) {
-                    throw new BadRequestException("Параметры не соответствуют требованиям для автокредита");
-                }
-            }
-            default -> {
-            }
-        }
+        validateCreditTypes(creditType.getId(), amount, termMonths);
 
     }
 
+    private void validateCreditTypes(Long idFk, BigDecimal amount, Integer termMonths) {
+        var credit = creditClient.getCreditProduct(idFk).getBody();
+
+        if (credit == null) {
+            throw new
+                    BadRequestException("Внутренняя ошибка сервера");
+        }
+
+        var minAmount = credit.getMinAmount();
+        var maxAmount = credit.getMaxAmount();
+        var minTermMonth = credit.getMinTermMonths();
+        var maxTermMonth = credit.getMaxTermMonths();
+
+        if (amount.compareTo(minAmount) < 0 || amount.compareTo(maxAmount) > 0 ||
+                termMonths < minTermMonth || termMonths > maxTermMonth) {
+            throw new BadRequestException("Параметры не соответствуют требованиям для типа кредита");
+        }
+    }
 }

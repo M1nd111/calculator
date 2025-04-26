@@ -1,8 +1,10 @@
 package plugin.acc2.calculator.dto;
 
-import java.math.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
 
-import lombok.*;
+import java.math.BigDecimal;
 
 @Data
 @Builder

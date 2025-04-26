@@ -15,11 +15,11 @@ public class UserCalculation {
 
     private int termMonths;
 
-    private Float baseInterestRate;
+    private BigDecimal baseInterestRate;
 
     private boolean insuranceApplied;
 
-    private Float insuranceDiscount;
+    private BigDecimal insuranceDiscount;
 
     private CreditType creditType;
 

@@ -1,8 +1,10 @@
 package plugin.acc2.calculator.dto;
 
-import java.math.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
 
-import lombok.*;
+import java.math.BigDecimal;
 
 @Data
 @Builder
@@ -13,11 +15,11 @@ public class CalculateRequestDto {
 
     private int termMonths;
 
-    private Float baseInterestRate;
+    private BigDecimal baseInterestRate;
 
     private boolean insuranceApplied;
 
-    private Float insuranceDiscount;
+    private BigDecimal insuranceDiscount;
 
     private CreditType creditType;
 

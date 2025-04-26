@@ -3,6 +3,7 @@ package plugin.acc2.calculator.api;
 import io.swagger.v3.oas.annotations.*;
 import io.swagger.v3.oas.annotations.media.*;
 import io.swagger.v3.oas.annotations.responses.*;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.*;
 import org.springframework.web.*;
 import org.springframework.web.bind.annotation.*;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import plugin.acc2.calculator.dto.*;
 
 @RequestMapping("/api/calculator")
+@SecurityRequirement(name = "BearerAuth")
 public interface CalculatorApi {
 
     @GetMapping
